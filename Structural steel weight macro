@@ -1,23 +1,53 @@
-Function GetPlateWeight(shapeID As String, lengthInInches As Double) As Double
-    Dim thickness As Double, width As Double
-    Dim xPos As Long
-    
-    xPos = InStr(1, shapeID, "X")
-    
-    If xPos > 0 Then
-        thickness = Val(Mid(shapeID, 4, xPos - 4))
-        width = Val(Mid(shapeID, xPos + 1))
-        GetPlateWeight = thickness * width * lengthInInches * 0.284
+Function GetPlateWeight(shapeID As String, lengthStr As Variant) As Double
+    Dim thickness As Double, width As Double, length As Double
+    Dim xPosition As Long
+
+    ' For plate like "PL 1'-3"X3/4"" or "PL 1'-6"X7/8"BENT":
+    ' width = 1'-3" (the part between "PL " and "X")
+    ' thickness = 3/4" or 7/8" (the part after "X" before any other text)
+
+    ' Extract width (between "PL " and "X")
+    Dim widthPart As String
+    xPosition = InStr(UCase(shapeID), "X")
+    If Left(shapeID, 2) = "PL" And xPosition > 0 Then
+        widthPart = Mid(shapeID, 3, xPosition - 3)
+        width = ParseMeasurement(widthPart)
     Else
-        GetPlateWeight = 0
+        width = 0
     End If
+
+    ' Extract thickness (after "X", ignoring subsequent text)
+    Dim thicknessPart As String
+    If xPosition > 0 Then
+        ' Find the first non-numeric or non-fraction character after "X"
+        Dim i As Long
+        thicknessPart = Mid(shapeID, xPosition + 1)
+        For i = 1 To Len(thicknessPart)
+            Select Case Mid(thicknessPart, i, 1)
+                Case "0" To "9", "/", "-", "."
+                    ' Keep going
+                Case Else
+                    thicknessPart = Left(thicknessPart, i - 1)
+                    Exit For
+            End Select
+        Next i
+        thickness = ParseMeasurement(thicknessPart)
+    Else
+        thickness = 0
+    End If
+
+    ' Parse length from column D
+    length = ParseMeasurement(CStr(lengthStr))
+
+    ' Steel plate weight calculation: 0.284 lbs per cubic inch
+    GetPlateWeight = thickness * width * length * 0.284
 End Function
+
 Function GetShapeWeight(shapeID As String, lengthStr As String) As Double
     Dim wtPerFoot As Double
-    Dim feetPart As Double, inchPart As Double
-    Dim dashPos As Long
+    Dim totalFeet As Double
     
-    ' Lookup from shape database (replace with actual sheet name and range)
+    ' Lookup from shape database
     On Error Resume Next
     wtPerFoot = Application.WorksheetFunction.VLookup(shapeID, Worksheets("Database v16.0").Range("C:E"), 3, False)
     On Error GoTo 0
@@ -27,19 +57,107 @@ Function GetShapeWeight(shapeID As String, lengthStr As String) As Double
         Exit Function
     End If
     
-    ' Convert feet-inches string to decimal feet
-    dashPos = InStr(1, lengthStr, "'-")
+    ' Convert length to feet
+    totalFeet = ParseMeasurementToFeet(lengthStr)
     
-    If dashPos > 0 Then
-        feetPart = Val(Left(lengthStr, dashPos - 1))
-        inchPart = Val(Mid(lengthStr, dashPos + 2)) / 12
-    Else
-        feetPart = Val(lengthStr)
-        inchPart = 0
+    GetShapeWeight = wtPerFoot * totalFeet
+End Function
+
+Function ParseMeasurement(measureStr As String) As Double
+    ' This function parses measurement strings like:
+    ' "3/4"" -> 0.75 inches
+    ' "6"" -> 6 inches
+    ' "1'-3"" -> 15 inches (1 foot + 3 inches)
+    
+    Dim result As Double
+    Dim temp As String
+    
+    ' Handle empty case
+    If Len(Trim(measureStr)) = 0 Then
+        ParseMeasurement = 0
+        Exit Function
     End If
     
-    GetShapeWeight = wtPerFoot * (feetPart + inchPart)
+    ' Remove inch marks
+    temp = Replace(measureStr, """", "")
+    
+    ' Handle feet-inches format like "1'-3"
+    If InStr(temp, "'") > 0 Then
+        Dim parts() As String
+        parts = Split(temp, "'")
+        
+        ' Feet part
+        result = Val(parts(0)) * 12
+        
+        ' Inch part (if exists)
+        If UBound(parts) > 0 Then
+            Dim inchPart As String
+            inchPart = Trim(parts(1))
+            
+            ' Remove leading dash if present
+            If Left(inchPart, 1) = "-" Then
+                inchPart = Mid(inchPart, 2)
+            End If
+            
+            result = result + ParseFractionOrDecimal(inchPart)
+        End If
+    Else
+        ' Just inches (may be fractional)
+        result = ParseFractionOrDecimal(temp)
+    End If
+    
+    ParseMeasurement = result
 End Function
+
+Function ParseMeasurementToFeet(measureStr As String) As Double
+    ' Convert measurement to feet
+    Dim inches As Double
+    inches = ParseMeasurement(measureStr)
+    ParseMeasurementToFeet = inches / 12
+End Function
+
+Function ParseFractionOrDecimal(valueStr As String) As Double
+    ' Parse values like: "6", "1/4", "6 1/2"
+    Dim result As Double
+    Dim parts() As String
+    
+    valueStr = Trim(valueStr)
+    
+    ' Handle mixed number like "6 1/2"
+    If InStr(valueStr, " ") > 0 Then
+        parts = Split(valueStr, " ")
+        result = Val(parts(0)) + ParseFraction(parts(1))
+    ' Handle fraction like "1/4"
+    ElseIf InStr(valueStr, "/") > 0 Then
+        result = ParseFraction(valueStr)
+    ' Handle decimal like "6"
+    Else
+        result = Val(valueStr)
+    End If
+    
+    ParseFractionOrDecimal = result
+End Function
+
+Function ParseFraction(fractionStr As String) As Double
+    ' Parse fraction like "1/4" to 0.25
+    Dim parts() As String
+    Dim numerator As Double, denominator As Double
+    
+    If InStr(fractionStr, "/") > 0 Then
+        parts = Split(fractionStr, "/")
+        numerator = Val(parts(0))
+        denominator = Val(parts(1))
+        
+        If denominator <> 0 Then
+            ParseFraction = numerator / denominator
+        Else
+            ParseFraction = 0
+        End If
+    Else
+        ParseFraction = Val(fractionStr)
+    End If
+End Function
+
 Sub CalculateWeightsAllSheets()
     Dim ws As Worksheet
     Dim i As Long, rowStart As Long
@@ -48,15 +166,18 @@ Sub CalculateWeightsAllSheets()
     Dim emptyRowCount As Long, maxEmptyRows As Long: maxEmptyRows = 3
     Dim boltKeyword As String: boltKeyword = "BOLT"
     
+    Application.ScreenUpdating = False
+    
     For Each ws In ThisWorkbook.Worksheets
         rowStart = 4
         i = rowStart
         emptyRowCount = 0
         
+        ' Check if this sheet has a material list
         If InStr(1, UCase(ws.Cells(1, 1).Value), "MATERIAL LIST") > 0 Then
             Do While emptyRowCount < maxEmptyRows
                 shapeID = Trim(ws.Cells(i, "C").Value)
-                lengthStr = ws.Cells(i, "D").Value
+                lengthStr = Trim(ws.Cells(i, "D").Value)
                 qty = Val(ws.Cells(i, "B").Value)
                 
                 ' Check for end of material list
@@ -72,7 +193,7 @@ Sub CalculateWeightsAllSheets()
                 
                 If shapeID <> "" Then
                     If Left(shapeID, 2) = "PL" Then
-                        weightResult = GetPlateWeight(shapeID, Val(lengthStr))
+                        weightResult = GetPlateWeight(shapeID, lengthStr)
                     Else
                         weightResult = GetShapeWeight(shapeID, lengthStr)
                     End If
@@ -85,7 +206,48 @@ NextRow:
         End If
     Next ws
     
+    Application.ScreenUpdating = True
     MsgBox "All material weights calculated in column F for applicable sheets!", vbInformation
 End Sub
 
-
+' Helper function to test plate weight calculation
+Sub TestPlateWeights()
+    Dim tests(1 To 5, 1 To 3) As String
+    Dim results(1 To 5) As Double
+    Dim msg As String
+    Dim i As Long
+    
+    ' Set up test cases - (ShapeID, Length, ExpectedWeight)
+    tests(1, 1) = "PL 1/4""X6"""       ' Row 5
+    tests(1, 2) = "2'-0"""
+    tests(1, 3) = "Expected: 57.4"
+    
+    tests(2, 1) = "PL 2'-0""X1/4"""    ' Example with feet in width
+    tests(2, 2) = "2'-0"""
+    tests(2, 3) = "Expected: 34.1"
+    
+    tests(3, 1) = "PL 6""X1/4"""       ' Example with just inches
+    tests(3, 2) = "2'-0"""
+    tests(3, 3) = "Expected: 10.2"
+    
+    tests(4, 1) = "PL 1'-2""X3/8"""    ' Example with feet-inches and fraction
+    tests(4, 2) = "3'-6"""
+    tests(4, 3) = "Expected: 55.4"
+    
+    tests(5, 1) = "PL 6""X1/2"""       ' Example with thicker plate
+    tests(5, 2) = "4'-0"""
+    tests(5, 3) = "Expected: 40.9"
+    
+    ' Run tests
+    For i = 1 To 5
+        results(i) = GetPlateWeight(tests(i, 1), tests(i, 2))
+        msg = msg & "Test " & i & ": " & tests(i, 1) & " x " & tests(i, 2) & vbCrLf
+        msg = msg & "Width: " & Mid(tests(i, 1), 3, InStr(UCase(tests(i, 1)), "X") - 3) & vbCrLf
+        msg = msg & "Thickness: " & Mid(tests(i, 1), InStr(UCase(tests(i, 1)), "X") + 1) & vbCrLf
+        msg = msg & "Length: " & tests(i, 2) & vbCrLf
+        msg = msg & "Calculated Weight: " & Round(results(i), 2) & " lbs" & vbCrLf
+        msg = msg & tests(i, 3) & vbCrLf & vbCrLf
+    Next i
+    
+    MsgBox msg, vbInformation, "Plate Weight Test Results"
+End Sub
