@@ -1,0 +1,91 @@
+Function GetPlateWeight(shapeID As String, lengthInInches As Double) As Double
+    Dim thickness As Double, width As Double
+    Dim xPos As Long
+    
+    xPos = InStr(1, shapeID, "X")
+    
+    If xPos > 0 Then
+        thickness = Val(Mid(shapeID, 4, xPos - 4))
+        width = Val(Mid(shapeID, xPos + 1))
+        GetPlateWeight = thickness * width * lengthInInches * 0.284
+    Else
+        GetPlateWeight = 0
+    End If
+End Function
+Function GetShapeWeight(shapeID As String, lengthStr As String) As Double
+    Dim wtPerFoot As Double
+    Dim feetPart As Double, inchPart As Double
+    Dim dashPos As Long
+    
+    ' Lookup from shape database (replace with actual sheet name and range)
+    On Error Resume Next
+    wtPerFoot = Application.WorksheetFunction.VLookup(shapeID, Worksheets("Database v16.0").Range("C:E"), 3, False)
+    On Error GoTo 0
+    
+    If wtPerFoot = 0 Then
+        GetShapeWeight = 0
+        Exit Function
+    End If
+    
+    ' Convert feet-inches string to decimal feet
+    dashPos = InStr(1, lengthStr, "'-")
+    
+    If dashPos > 0 Then
+        feetPart = Val(Left(lengthStr, dashPos - 1))
+        inchPart = Val(Mid(lengthStr, dashPos + 2)) / 12
+    Else
+        feetPart = Val(lengthStr)
+        inchPart = 0
+    End If
+    
+    GetShapeWeight = wtPerFoot * (feetPart + inchPart)
+End Function
+Sub CalculateWeightsAllSheets()
+    Dim ws As Worksheet
+    Dim i As Long, rowStart As Long
+    Dim shapeID As String, lengthStr As String
+    Dim qty As Double, weightResult As Double
+    Dim emptyRowCount As Long, maxEmptyRows As Long: maxEmptyRows = 3
+    Dim boltKeyword As String: boltKeyword = "BOLT"
+    
+    For Each ws In ThisWorkbook.Worksheets
+        rowStart = 4
+        i = rowStart
+        emptyRowCount = 0
+        
+        If InStr(1, UCase(ws.Cells(1, 1).Value), "MATERIAL LIST") > 0 Then
+            Do While emptyRowCount < maxEmptyRows
+                shapeID = Trim(ws.Cells(i, "C").Value)
+                lengthStr = ws.Cells(i, "D").Value
+                qty = Val(ws.Cells(i, "B").Value)
+                
+                ' Check for end of material list
+                If UCase(Trim(shapeID)) Like "*" & boltKeyword & "*" Then Exit Do
+                
+                If shapeID = "" And lengthStr = "" Then
+                    emptyRowCount = emptyRowCount + 1
+                    i = i + 1
+                    GoTo NextRow
+                Else
+                    emptyRowCount = 0
+                End If
+                
+                If shapeID <> "" Then
+                    If Left(shapeID, 2) = "PL" Then
+                        weightResult = GetPlateWeight(shapeID, Val(lengthStr))
+                    Else
+                        weightResult = GetShapeWeight(shapeID, lengthStr)
+                    End If
+                    ws.Cells(i, "F").Value = Round(weightResult * qty, 2)
+                End If
+                
+NextRow:
+                i = i + 1
+            Loop
+        End If
+    Next ws
+    
+    MsgBox "All material weights calculated in column F for applicable sheets!", vbInformation
+End Sub
+
+
