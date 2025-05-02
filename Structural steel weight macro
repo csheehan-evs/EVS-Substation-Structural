@@ -42,24 +42,48 @@ Function GetPlateWeight(shapeID As String, lengthStr As Variant) As Double
     ' Steel plate weight calculation: 0.284 lbs per cubic inch
     GetPlateWeight = thickness * width * length * 0.284
 End Function
-
-Function GetShapeWeight(shapeID As String, lengthStr As String) As Double
+Function GetShapeWeight(shapeID As String, lengthStr As String, callingSheetName As String, callingRow As Long) As Double
     Dim wtPerFoot As Double
-    Dim totalFeet As Double
-    
-    ' Lookup from shape database
-    On Error Resume Next
-    wtPerFoot = Application.WorksheetFunction.VLookup(shapeID, Worksheets("Database v16.0").Range("C:E"), 3, False)
-    On Error GoTo 0
-    
+
+    Debug.Print "*** GetShapeWeight called for ShapeID: '" & shapeID & "', Length: '" & lengthStr & "', Called from Sheet: '" & callingSheetName & "', Row: " & callingRow
+
+    Debug.Print "*** Checking condition - Sheet Name: '" & callingSheetName & "'"
+    Debug.Print "*** Checking condition - Row Number: " & callingRow
+    Debug.Print "*** Checking condition - ShapeID: '" & shapeID & "'"
+    Debug.Print "*** Checking condition - UCase(Trim(ShapeID)): '" & UCase(Trim(shapeID)) & "'"
+
+    If callingSheetName = "345KV SWITCH SUPPORT" And (callingRow = 11 Or callingRow = 12) And UCase(Trim(shapeID)) = "HSS10X10X1/2" Then
+        Debug.Print "*** Debugging HSS10X10X1/2 on '345KV SWITCH SUPPORT' row " & callingRow & ":"
+        Debug.Print "*** ShapeID (Len: " & Len(shapeID) & "): '" & shapeID & "'"
+        Debug.Print "*** UCase(Trim(ShapeID)) (Len: " & Len(UCase(Trim(shapeID))) & "): '" & UCase(Trim(shapeID)) & "'"
+        Dim dbSheet As Worksheet
+        Set dbSheet = ThisWorkbook.Worksheets("Database v16.0")
+        Dim foundRange As Range
+        Set foundRange = dbSheet.Columns("C").Find(What:=UCase(Trim(shapeID)), LookIn:=xlValues, LookAt:=xlWhole, MatchCase:=False)
+        If Not foundRange Is Nothing Then
+            Debug.Print "*** Found in Database on row: " & foundRange.Row
+            wtPerFoot = dbSheet.Cells(foundRange.Row, "E").Value
+            Debug.Print "*** Weight Per Foot: " & wtPerFoot
+        Else
+            Debug.Print "*** NOT found in Database."
+            wtPerFoot = 0
+        End If
+    Else
+        On Error Resume Next
+        wtPerFoot = Application.WorksheetFunction.VLookup(shapeID, Worksheets("Database v16.0").Range("C:E"), 3, False)
+        On Error GoTo 0
+    End If
+
     If wtPerFoot = 0 Then
         GetShapeWeight = 0
         Exit Function
     End If
-    
+
     ' Convert length to feet
+    Dim totalFeet As Double
     totalFeet = ParseMeasurementToFeet(lengthStr)
-    
+    Debug.Print "*** GetShapeWeight - Total Feet: " & totalFeet
+
     GetShapeWeight = wtPerFoot * totalFeet
 End Function
 
@@ -168,41 +192,44 @@ Sub CalculateWeightsAllSheets()
     Application.ScreenUpdating = False
 
     For Each ws In ThisWorkbook.Worksheets
+        Debug.Print "Processing Sheet: " & ws.Name
         rowStart = 4
         i = rowStart
-        boltStartRow = 0 ' Reset bolt start row for each sheet
+        boltStartRow = 0
 
-        ' Check if this sheet has a material list
         If InStr(1, UCase(ws.Cells(1, 1).Value), "MATERIAL LIST") > 0 Then
-            ' Find the start row of the bolt section
             boltStartRow = FindBoltStartRow(ws)
+            Debug.Print "Sheet: " & ws.Name & ", Bolt Start Row: " & boltStartRow
 
-            ' Process shapes and plates up to the bolt section (if it exists)
-            i = rowStart
-            Do While Trim(ws.Cells(i, "C").Value) <> ""
-                If boltStartRow > 0 And i >= boltStartRow Then
-                    Exit Do ' Stop processing shapes/plates once we reach the bolt section
-                End If
-
+            Do While UCase(Trim(ws.Cells(i, "C").Value)) <> "BOLTS FOR ONE STRUCTURE" And i < 1000 ' Added a safety limit
                 shapeID = Trim(ws.Cells(i, "C").Value)
                 lengthStr = Trim(ws.Cells(i, "D").Value)
                 qty = Val(ws.Cells(i, "B").Value)
 
-                If shapeID <> "" Then
-                    If Left(shapeID, 2) = "PL" Then
-                        weightResult = GetPlateWeight(shapeID, lengthStr)
-                    ElseIf UCase(Trim(shapeID)) <> boltKeyword Then ' Avoid processing the keyword row
-                        weightResult = GetShapeWeight(shapeID, lengthStr)
-                    End If
-                    If weightResult <> 0 Then
-                        ws.Cells(i, "F").Value = Round(weightResult * qty, 2)
+                Debug.Print "Sheet: " & ws.Name & ", Processing row: " & i & ", ShapeID: '" & shapeID & "', Length: '" & lengthStr & "', Qty: " & qty
+
+                ' --- Skip ONLY assembly description rows ---
+                If UCase(shapeID) <> "COLUMN ASSEMBLY" And UCase(shapeID) <> "BEAM ASSEMBLY" Then
+                    If UCase(Trim(shapeID)) <> boltKeyword And shapeID <> "" Then
+                        Debug.Print "Sheet: " & ws.Name & ", Row: " & i & ", About to calculate weight for ShapeID: '" & shapeID & "'"
+                        If Left(shapeID, 2) = "PL" Then
+                            weightResult = GetPlateWeight(shapeID, lengthStr)
+                            Debug.Print "Sheet: " & ws.Name & ", Row: " & i & ", Plate Weight Result: " & weightResult
+                        Else
+                            weightResult = GetShapeWeight(shapeID, lengthStr, ws.Name, i)
+                            Debug.Print "Sheet: " & ws.Name & ", Row: " & i & ", Shape Weight Result: " & weightResult
+                        End If
+                        If weightResult <> 0 Then
+                            ws.Cells(i, "F").Value = Round(weightResult * qty, 2)
+                            Debug.Print "Sheet: " & ws.Name & ", Row: " & i & ", Weight written to F" & i & ": " & Round(weightResult * qty, 2)
+                        End If
                     End If
                 End If
                 i = i + 1
             Loop
 
-            ' Now process the bolt section if it was found on this sheet
             If boltStartRow > 0 Then
+                Debug.Print "Sheet: " & ws.Name & ", Starting bolt processing at row: " & boltStartRow
                 ProcessBoltSection ws, boltStartRow
             End If
         End If
