@@ -157,32 +157,37 @@ Function ParseFraction(fractionStr As String) As Double
         ParseFraction = Val(fractionStr)
     End If
 End Function
-
 Sub CalculateWeightsAllSheets()
     Dim ws As Worksheet
     Dim i As Long, rowStart As Long
     Dim shapeID As String, lengthStr As String
     Dim qty As Double, weightResult As Double
     Dim emptyRowCount As Long, maxEmptyRows As Long: maxEmptyRows = 3
-    Dim boltKeyword As String: boltKeyword = "BOLT"
-    
+    Dim boltKeyword As String: boltKeyword = "BOLTS FOR ONE STRUCTURE"
+    Dim boltStartRow As Long
+
     Application.ScreenUpdating = False
-    
+
     For Each ws In ThisWorkbook.Worksheets
         rowStart = 4
         i = rowStart
         emptyRowCount = 0
-        
+        boltStartRow = 0 ' Reset bolt start row for each sheet
+
         ' Check if this sheet has a material list
         If InStr(1, UCase(ws.Cells(1, 1).Value), "MATERIAL LIST") > 0 Then
+            ' Process shapes and plates until we reach or find the bolt section
             Do While emptyRowCount < maxEmptyRows
                 shapeID = Trim(ws.Cells(i, "C").Value)
                 lengthStr = Trim(ws.Cells(i, "D").Value)
                 qty = Val(ws.Cells(i, "B").Value)
-                
-                ' Check for end of material list
-                If UCase(Trim(shapeID)) Like "*" & boltKeyword & "*" Then Exit Do
-                
+
+                ' Check for the beginning of the bolt section
+                If UCase(Trim(shapeID)) = boltKeyword Then
+                    boltStartRow = i
+                    Exit Do ' Exit the shape/plate processing loop
+                End If
+
                 If shapeID = "" And lengthStr = "" Then
                     emptyRowCount = emptyRowCount + 1
                     i = i + 1
@@ -190,7 +195,7 @@ Sub CalculateWeightsAllSheets()
                 Else
                     emptyRowCount = 0
                 End If
-                
+
                 If shapeID <> "" Then
                     If Left(shapeID, 2) = "PL" Then
                         weightResult = GetPlateWeight(shapeID, lengthStr)
@@ -199,18 +204,195 @@ Sub CalculateWeightsAllSheets()
                     End If
                     ws.Cells(i, "F").Value = Round(weightResult * qty, 2)
                 End If
-                
+
 NextRow:
                 i = i + 1
             Loop
+
+            ' Now process the bolt section if it was found on this sheet
+            If boltStartRow > 0 Then
+                ProcessBoltSection ws, boltStartRow
+            End If
         End If
     Next ws
-    
+
     Application.ScreenUpdating = True
     MsgBox "All material weights calculated in column F for applicable sheets!", vbInformation
 End Sub
+Sub ProcessBoltSection(ws As Worksheet, startRow As Long)
+    Dim boltSheet As Worksheet
+    Dim i As Long
+    Dim qty As Long, weight As Double
+    Dim boltType As String, lengthStr As String
+    Dim diameter As String
+    Dim boltLength As Double
+    Dim diaColIndex As Integer
+    Dim itemWeight As Double
+    Dim washerRow As Long
 
-' Helper function to test plate weight calculation
+    ' Set row value for washers (F436 washers)
+    washerRow = 37
+
+    ' Get bolt data sheet
+    On Error Resume Next
+    Set boltSheet = ThisWorkbook.Sheets("Bolt Data")
+    If Err.Number <> 0 Then
+        MsgBox "The 'Bolt Data' sheet is missing! Cannot calculate bolt weights.", vbExclamation
+        Exit Sub
+    End If
+    On Error GoTo 0
+
+    ' Start processing from the row after "BOLTS FOR ONE STRUCTURE"
+    i = startRow + 1
+
+    Do While Trim(ws.Cells(i, "C").Value) <> ""
+        boltType = Trim(ws.Cells(i, "C").Value)
+        qty = Val(ws.Cells(i, "B").Value)
+        lengthStr = Trim(ws.Cells(i, "D").Value)
+        diameter = ExtractDiameter(boltType)
+
+        If diameter <> "" Then
+            diaColIndex = FindDiameterColumn(boltSheet, diameter)
+            If diaColIndex > 0 Then
+                If InStr(UCase(boltType), "WASHER") > 0 Then
+                    If IsNumeric(boltSheet.Cells(washerRow, diaColIndex).Value) Then
+                        weight = boltSheet.Cells(washerRow, diaColIndex).Value
+                        itemWeight = (qty * weight) / 100
+                        ws.Cells(i, "F").Value = Round(itemWeight, 2)
+                    Else
+                        ws.Cells(i, "F").Value = 0
+                    End If
+                Else ' It's a bolt (nut weight is included)
+                    If lengthStr <> "" Then
+                        boltLength = ParseMeasurement(lengthStr)
+                        lenRowIndex = FindLengthRow(boltSheet, boltLength)
+                        If lenRowIndex > 0 Then
+                            If IsNumeric(boltSheet.Cells(lenRowIndex, diaColIndex).Value) Then
+                                weight = boltSheet.Cells(lenRowIndex, diaColIndex).Value
+                                itemWeight = (qty * weight) / 100
+                                ws.Cells(i, "F").Value = Round(itemWeight, 2)
+                            Else
+                                ws.Cells(i, "F").Value = 0
+                            End If
+                        Else
+                            ws.Cells(i, "F").Value = 0
+                        End If
+                    Else
+                        ws.Cells(i, "F").Value = 0
+                    End If
+                End If
+            Else
+                ws.Cells(i, "F").Value = 0
+            End If
+        Else
+            ws.Cells(i, "F").Value = 0
+        End If
+        i = i + 1
+    Loop
+End Sub
+
+Function ExtractDiameter(boltType As String) As String
+    Dim diameter As String
+    Dim startPos As Long, endPos As Long
+    Dim i As Long
+
+    ' Check for "DIA." pattern
+    endPos = InStr(UCase(boltType), "DIA.")
+    If endPos > 0 Then
+        diameter = Trim(Left(boltType, endPos - 1))
+        If Right(diameter, 1) = """" Then
+            diameter = Left(diameter, Len(diameter) - 1)
+        End If
+        ExtractDiameter = diameter
+        Exit Function
+    End If
+
+    ' Handle cases like "2" U-BOLT ASSEMBLY"
+    If InStr(UCase(boltType), "U-BOLT") > 0 Then
+        ' Attempt to extract the number at the beginning
+        For i = 1 To Len(boltType)
+            If IsNumeric(Mid(boltType, i, 1)) Then
+                Dim j As Long
+                Dim numPart As String
+                For j = i To Len(boltType)
+                    If Not IsNumeric(Mid(boltType, j, 1)) And Mid(boltType, j, 1) <> "." And Mid(boltType, j, 1) <> "-" And Mid(boltType, j, 1) <> "/" Then
+                        Exit For
+                    End If
+                    numPart = numPart & Mid(boltType, j, 1)
+                Next j
+                ' Check if the next part is a quote (") or nothing
+                Dim remainingPart As String
+                remainingPart = Trim(Mid(boltType, j))
+                If Left(remainingPart, 1) = """" Or remainingPart = "" Then
+                    ExtractDiameter = numPart
+                    Exit Function
+                End If
+                ' If not a quote, maybe the diameter is just the number
+                ExtractDiameter = numPart
+                Exit Function
+            End If
+        Next i
+    End If
+
+    ExtractDiameter = "" ' No diameter extracted
+End Function
+
+Function FindDiameterColumn(ws As Worksheet, dia As String) As Integer
+    Dim i As Integer
+    Dim colValue As String
+
+    Debug.Print "--- Searching for Diameter: " & dia & " ---"
+    For i = 3 To 12 ' Columns C to L, adjust range as needed
+        colValue = Trim(ws.Cells(3, i).Value)
+        colValue = Replace(colValue, """", "")
+        dia = Replace(dia, """", "")
+        Debug.Print "  Comparing: '" & colValue & "' (Column " & i & ") with '" & dia & "'"
+        If colValue = dia Then
+            FindDiameterColumn = i
+            Debug.Print "  *** Diameter FOUND in Column: " & i & " ***"
+            Exit Function
+        End If
+    Next i
+
+    FindDiameterColumn = -1 ' Not found
+    Debug.Print "  *** Diameter NOT found ***"
+End Function
+
+Function FindLengthRow(ws As Worksheet, lengthInInches As Double) As Integer
+    Dim i As Integer
+    Dim rowValue As String
+    Dim rowLengthInInches As Double
+
+    Debug.Print "--- Searching for Length (inches): " & lengthInInches & " ---"
+    For i = 3 To 35 ' Rows 3-35 contain bolt length data
+        rowValue = Trim(ws.Cells(i, 2).Value)
+        If rowValue <> "" Then
+            rowLengthInInches = ParseMeasurement(rowValue)
+            Debug.Print "  Comparing: " & lengthInInches & " with '" & rowValue & "' (" & rowLengthInInches & " inches, Row " & i & ")"
+            If Abs(lengthInInches - rowLengthInInches) < 0.05 Then
+                FindLengthRow = i
+                Debug.Print "  *** Length FOUND in Row: " & i & " ***"
+                Exit Function
+            End If
+        End If
+    Next i
+
+    FindLengthRow = -1 ' Not found
+    Debug.Print "  *** Length NOT found ***"
+End Function
+
+Function FindBoltStartRow(ws As Worksheet) As Long
+    Dim i As Long
+    For i = 1 To ws.Cells(ws.Rows.Count, "C").End(xlUp).Row
+        If InStr(1, UCase(ws.Cells(i, "C").Value), "BOLTS FOR ONE STRUCTURE") > 0 Then
+            FindBoltStartRow = i
+            Exit Function
+        End If
+    Next i
+    FindBoltStartRow = 0 ' Not found
+End Function
+
+
 Sub TestPlateWeights()
     Dim tests(1 To 5, 1 To 3) As String
     Dim results(1 To 5) As Double
@@ -250,4 +432,60 @@ Sub TestPlateWeights()
     Next i
     
     MsgBox msg, vbInformation, "Plate Weight Test Results"
+End Sub
+Sub TestBoltWeightCalculation_TestSheet()
+    Dim ws As Worksheet
+    Dim msg As String
+
+    ' Set the worksheet to "test"
+    On Error Resume Next
+    Set ws = ThisWorkbook.Sheets("test")
+    On Error GoTo 0
+
+    If Not ws Is Nothing Then
+        If InStr(1, UCase(ws.Cells(1, 1).Value), "MATERIAL LIST") > 0 Then
+            Dim boltRow As Long
+            boltRow = FindBoltStartRow(ws)
+
+            If boltRow > 0 Then
+                msg = "Testing bolt weights on sheet: " & ws.Name & vbCrLf & vbCrLf
+                ProcessBoltSection ws, boltRow ' This will output debug info to the Immediate Window
+
+                ' Display some results for verification in a message box
+                Dim i As Long
+                For i = boltRow + 1 To ws.Cells(ws.Rows.Count, "C").End(xlUp).Row
+                    If Trim(ws.Cells(i, "C").Value) <> "" Then
+                        msg = msg & "Row " & i & ":" & vbCrLf
+                        msg = msg & "  Quantity: " & ws.Cells(i, "B").Value & vbCrLf
+                        msg = msg & "  Bolt Type: " & ws.Cells(i, "C").Value & vbCrLf
+                        msg = msg & "  Length: " & ws.Cells(i, "D").Value & vbCrLf
+                        msg = msg & "  Calculated Weight: " & ws.Cells(i, "F").Value & " lbs" & vbCrLf & vbCrLf
+                    End If
+                Next i
+
+                MsgBox msg, vbInformation, "Bolt Weight Test Results on 'test' Sheet"
+            Else
+                MsgBox "'BOLTS FOR ONE STRUCTURE' not found on the 'test' sheet!", vbExclamation
+            End If
+        Else
+            MsgBox "'MATERIAL LIST' not found on the 'test' sheet!", vbExclamation
+        End If
+    Else
+        MsgBox "The 'test' sheet was not found!", vbExclamation
+    End If
+End Sub
+
+Sub DebugBoltSectionDetection()
+    Dim ws As Worksheet
+    Dim rowNum As Long
+    For Each ws In ThisWorkbook.Sheets
+        If ws.Name <> "Bolt Data" Then
+            rowNum = FindBoltStartRow(ws)
+            If rowNum > 0 Then
+                MsgBox "Found 'BOLTS FOR ONE STRUCTURE' on sheet '" & ws.Name & "' at row " & rowNum
+            Else
+                MsgBox "'BOLTS FOR ONE STRUCTURE' not found on sheet '" & ws.Name & "'"
+            End If
+        End If
+    Next ws
 End Sub
