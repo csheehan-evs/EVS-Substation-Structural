@@ -209,7 +209,7 @@ Sub CalculateWeightsAllSheets()
                 Debug.Print "Sheet: " & ws.Name & ", Processing row: " & i & ", ShapeID: '" & shapeID & "', Length: '" & lengthStr & "', Qty: " & qty
 
                 ' --- Skip ONLY assembly description rows ---
-                If UCase(shapeID) <> "COLUMN ASSEMBLY" And UCase(shapeID) <> "BEAM ASSEMBLY" Then
+                If UCase(shapeID) <> "COLUMN ASSEMBLY" And UCase(shapeID) <> "BEAM ASSEMBLY" And UCase(shapeID) <> "CAGE ASSEMBLY" Then
                     If UCase(Trim(shapeID)) <> boltKeyword And shapeID <> "" Then
                         Debug.Print "Sheet: " & ws.Name & ", Row: " & i & ", About to calculate weight for ShapeID: '" & shapeID & "'"
                         If Left(shapeID, 2) = "PL" Then
