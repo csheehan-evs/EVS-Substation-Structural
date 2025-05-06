@@ -1,0 +1,155 @@
+import pyautogui
+import time
+
+# Global settings
+pyautogui.FAILSAFE = True  # Move mouse to upper left corner to abort
+pyautogui.PAUSE = 1.0  # Default pause between actions (increased for reliability)
+
+def print_graphics_for_load_cases(num_cases, output_directory=None):
+    """
+    Automates the process of generating PDF files for multiple basic load cases in RISA 3D.
+    
+    Args:
+        num_cases: Number of basic load cases to process
+        output_directory: Directory to save PDFs. If None, uses the default location
+    """
+    print(f"Starting automation for {num_cases} load cases...")
+    print("Please ensure RISA 3D is open and in focus")
+    print("You have 5 seconds to focus the RISA 3D window")
+    time.sleep(5)  # Give time to focus the RISA 3D window
+    
+    # Step 1: Open Print Graphics dialog from the File menu
+    print("Opening Print Graphics dialog...")
+    # Click on File menu
+    pyautogui.click(x=27, y=30)  # Coordinates for File menu
+    time.sleep(1)
+    
+    # Click on Print in the dropdown
+    pyautogui.click(x=59, y=349)  # Coordinates for Print option
+    time.sleep(1)
+    
+    # Click on Print Graphics in the submenu
+    pyautogui.click(x=321, y=89)  # Coordinates for Print Graphics
+    time.sleep(2)  # Wait for dialog to open
+    
+    # Process each load case
+    for case_num in range(1, num_cases + 1):
+        print(f"Processing Basic Load Case {case_num}...")
+        
+        # Step 2: Click on Type dropdown and select Basic Load Case
+        # Based on screenshot, we'll click on the Type dropdown first
+        pyautogui.click(x=1176, y=193)  # Click on Type dropdown
+        time.sleep(1)
+        pyautogui.press('b')  # Type 'b' to select Basic Load Case
+        pyautogui.press('enter')
+        time.sleep(1)
+        
+        # Step 3: Click on the BLC dropdown to select the specific load case
+        pyautogui.click(x=1344, y=193)  # Click on BLC dropdown
+        time.sleep(1)
+        
+        # Reset to top of list
+        pyautogui.press('home')
+        time.sleep(0.5)
+        
+        # Press down arrow (case_num - 1) times to select the correct case
+        for _ in range(case_num - 1):
+            pyautogui.press('down')
+            time.sleep(0.2)
+        
+        pyautogui.press('enter')  # Select the load case
+        time.sleep(1)
+        
+        # Step 4: Click the Print button in the dialog
+        pyautogui.click(x=166, y=207)  # Click on Print button
+        time.sleep(2)  # Wait for dialog to appear
+        
+        # Step 5: Save the PDF
+        # First, ensure Bluebeam PDF is selected as the printer (it appears to be the default from your screenshot)
+        # If needed, click the printer dropdown
+        # pyautogui.click(x=143, y=258)  # Click printer dropdown if needed
+        # time.sleep(0.5)
+        # pyautogui.click(x=143, y=285)  # Select Bluebeam PDF
+        # time.sleep(0.5)
+        
+        # Click Print
+        pyautogui.click(x=166, y=207)  # Click on the Print button again
+        time.sleep(2)  # Wait for save dialog
+        
+        # Type filename (case number)
+        pyautogui.write(f"{case_num}")
+        
+        # If custom directory is specified, navigate to it
+        if output_directory:
+            # Click on the address bar
+            pyautogui.hotkey('alt', 'd')  
+            time.sleep(0.5)
+            # Clear any existing text
+            pyautogui.hotkey('ctrl', 'a')
+            time.sleep(0.3)
+            # Type the output directory
+            pyautogui.write(output_directory)
+            pyautogui.press('enter')
+            time.sleep(1)
+        
+        # Click Save
+        pyautogui.press('enter')
+        time.sleep(2)  # Wait for save to complete
+        
+        # Handle any confirmation dialogs (like file already exists)
+        # Uncomment if needed
+        # pyautogui.press('y')  # Press 'y' for Yes to overwrite
+        # time.sleep(1)
+        
+        print(f"  Completed Basic Load Case {case_num}")
+        
+        # For the next iteration, we need to reopen the Print Graphics dialog
+        if case_num < num_cases:
+            print("  Reopening Print Graphics dialog for next case...")
+            # Click on File menu
+            pyautogui.click(x=27, y=30)
+            time.sleep(1)
+            
+            # Click on Print in the dropdown
+            pyautogui.click(x=59, y=349)
+            time.sleep(1)
+            
+            # Click on Print Graphics in the submenu
+            pyautogui.click(x=321, y=89)
+            time.sleep(2)
+    
+    print("All load cases processed!")
+    print("Script execution complete.")
+
+def calibration_mode():
+    """
+    Helps calibrate mouse positions by showing current cursor coordinates.
+    Use this to find the right positions for clicking on UI elements.
+    """
+    print("CALIBRATION MODE")
+    print("Move your mouse to important UI elements and note their coordinates.")
+    print("Press Ctrl+C to exit calibration mode.")
+    
+    try:
+        while True:
+            x, y = pyautogui.position()
+            position_str = f"X: {x} Y: {y}"
+            print(position_str, end='\r')
+            time.sleep(0.1)
+    except KeyboardInterrupt:
+        print("\nCalibration mode exited.")
+
+if __name__ == "__main__":
+    # Configuration
+    NUM_LOAD_CASES = 20  # Change to match your number of load cases
+    OUTPUT_DIR = r"C:\Users\csheehan\Documents\PDFs"  # Change to your desired output directory
+    
+    # Uncomment the next line to run calibration mode
+    # calibration_mode()
+    
+    # Run the automation
+    print_graphics_for_load_cases(NUM_LOAD_CASES, OUTPUT_DIR)
+    
+    # Safety note
+    print("\nNote: If the automation doesn't work correctly, press and hold the cursor")
+    print("in the upper-left corner of the screen to activate the failsafe and stop the script.")
