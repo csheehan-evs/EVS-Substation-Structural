@@ -26,6 +26,8 @@ def print_graphics_for_load_cases(num_cases, output_directory=None):
     if output_directory and not os.path.exists(output_directory):
         os.makedirs(output_directory)
         print(f"Created output directory: {output_directory}")
+    elif output_directory and os.path.exists(output_directory) and os.listdir(output_directory):
+        print(f"WARNING: Output directory '{output_directory}' is not empty. Existing files may be overwritten.")
 
     print(f"Starting automation for {num_cases} load cases...")
     print("Please ensure RISA 3D is open and in focus")
@@ -53,7 +55,7 @@ def print_graphics_for_load_cases(num_cases, output_directory=None):
 
         print("Step 2/2: Printing and saving PDF...")
         pyautogui.click(x=177, y=249)  # Click Print button
-        time.sleep(4.5)  # Increased delay for print dialog
+        time.sleep(4.2)  # Increased delay for print dialog
 
         if output_directory:
             time.sleep(0.1)
@@ -85,7 +87,7 @@ def print_graphics_for_load_cases(num_cases, output_directory=None):
         print(f"Progress: {case_num}/{num_cases} ({case_num/num_cases*100:.1f}%)")
 
         if case_num < num_cases:
-            time.sleep(0.3)  # Further reduced optional pause
+            time.sleep(0.5)  # Further reduced optional pause
 
     print("\nAll load cases processed!")
     print(f"PDFs saved to: {output_directory}")
@@ -96,6 +98,13 @@ if __name__ == "__main__":
     print("RISA 3D PDF Export Automation Tool")
     print("===========================================")
     print("This script will automate exporting PDF graphics from RISA 3D.")
+    print("Before running the automation, please ensure:")
+    print("1. The target output folder is empty to avoid potential confusion or overwriting of unrelated files.")
+    print("2. RISA 3D is open and the desired model is loaded.")
+    print("3. Ensure that 'BLC 1: Dead Load' is the active load combination in the RISA 3D Graphics window.")
+    print("4. Ensure the RISA 3D Graphics window is set to the desired view (e.g., plan, elevation, specific member view).")
+    print("5. The RISA 3D window is located on your **left** screen. Your Bluebeam application can be on another screen.")
+    print("===========================================")
     print("Options:")
     print("1. Run calibration mode (to find screen coordinates)")
     print("2. Run automation (export PDFs)")
@@ -109,7 +118,8 @@ if __name__ == "__main__":
         elif choice == '2':
             try:
                 num_cases = int(input("Enter number of load cases to process (default: 20): ") or "20")
-                output_dir = input("Enter output directory (default: C:\\Users\\csheehan\\Documents\\PDFs): ") or r"C:\Users\csheehan\Documents\PDFs"
+                default_output_dir = r"Q:\General\Departments\Substation\Automation\Batch Output"
+                output_dir = input(f"Enter output directory (default: {default_output_dir}): ") or default_output_dir
 
                 print(f"\nReady to process {num_cases} load cases.")
                 print(f"PDFs will be saved to: {output_dir}")
