@@ -3,133 +3,90 @@ import time
 import os
 
 # Global settings
-pyautogui.FAILSAFE = True  # Move mouse to upper left corner to abort
-pyautogui.PAUSE = 1.0  # Default pause between actions (increased for reliability)
+pyautogui.FAILSAFE = True
+pyautogui.PAUSE = 0.1  # Reduced default pause
 
 def clear_screen():
-    """Clear the console screen"""
     os.system('cls' if os.name == 'nt' else 'clear')
 
 def calibration_mode():
-    """
-    Helps calibrate mouse positions by showing current cursor coordinates.
-    Use this to find the right positions for clicking on UI elements.
-    """
     print("==== CALIBRATION MODE ====")
     print("Move your mouse to important UI elements and note their coordinates.")
-    print("Press Ctrl+C to exit calibration mode.")
-    print("\nCurrent coordinates:")
-    
+    print("Press Ctrl+C to exit calibration mode.\n")
     try:
         while True:
             x, y = pyautogui.position()
-            position_str = f"X: {x} Y: {y}"
-            # Clear previous line and print new position
-            print(position_str + " " * 20, end='\r')
+            print(f"X: {x} Y: {y}" + " " * 20, end='\r')
             time.sleep(0.1)
     except KeyboardInterrupt:
         print("\n\nCalibration mode exited.")
-        print("Update the coordinate values in the script with these positions.")
         input("Press Enter to continue...")
 
 def print_graphics_for_load_cases(num_cases, output_directory=None):
-    """
-    Automates the process of generating PDF files for multiple basic load cases in RISA 3D.
-    
-    Args:
-        num_cases: Number of basic load cases to process
-        output_directory: Directory to save PDFs. If None, uses the default location
-    """
-    # Create output directory if it doesn't exist
     if output_directory and not os.path.exists(output_directory):
         os.makedirs(output_directory)
         print(f"Created output directory: {output_directory}")
-    
+
     print(f"Starting automation for {num_cases} load cases...")
     print("Please ensure RISA 3D is open and in focus")
-    print(f"Waiting 5 seconds before starting...")
-    
-    # Countdown
+    print("Waiting 5 seconds before starting...")
+
     for i in range(5, 0, -1):
         print(f"Starting in {i}...", end='\r')
         time.sleep(1)
-    
-    # Process each load case
+
+    pyautogui.hotkey('ctrl', 'p')
+    time.sleep(1.0)  # Reduced delay after opening print dialog
+
     for case_num in range(1, num_cases + 1):
         clear_screen()
         print(f"=== Processing Basic Load Case {case_num}/{num_cases} ===")
-        
-        print("Step 1/6: Opening File menu...")
-        pyautogui.click(x=27, y=30)  # Coordinates for File menu
-        time.sleep(1)
-        
-        print("Step 2/6: Selecting Print option...")
-        pyautogui.click(x=59, y=349)  # Coordinates for Print option
-        time.sleep(1)
-        
-        print("Step 3/6: Selecting Print Graphics...")
-        pyautogui.click(x=321, y=89)  # Coordinates for Print Graphics
-        time.sleep(2)  # Wait for dialog to open
-        
-        print("Step 4/6: Setting Basic Load Case type...")
-        # Click on Type dropdown and select Basic Load Case
-        pyautogui.click(x=1176, y=193)  # Click on Type dropdown
-        time.sleep(1)
-        pyautogui.press('b')  # Type 'b' to select Basic Load Case
-        pyautogui.press('enter')
-        time.sleep(1)
-        
-        print(f"Step 5/6: Selecting BLC {case_num}...")
-        # Click on the BLC dropdown to select the specific load case
-        pyautogui.click(x=1344, y=193)  # Click on BLC dropdown
-        time.sleep(1)
-        
-        # Reset to top of list
-        pyautogui.press('home')
+
+        print(f"Step 1/2: Selecting BLC {case_num}...")
+        pyautogui.click(x=1454, y=223)  # Click BLC dropdown
         time.sleep(0.5)
-        
-        # Press down arrow (case_num - 1) times to select the correct case
-        for _ in range(case_num - 1):
+        if case_num > 1:
             pyautogui.press('down')
-            time.sleep(0.2)
-        
-        pyautogui.press('enter')  # Select the load case
-        time.sleep(1)
-        
-        print("Step 6/6: Printing and saving PDF...")
-        # Click the Print button in the dialog
-        pyautogui.click(x=166, y=207)  # Click on Print button
-        time.sleep(2)  # Wait for dialog to appear
-        
-        # Type filename (case number)
-        pyautogui.write(f"{case_num}")
-        
-        # If custom directory is specified, navigate to it
-        if output_directory:
-            # Click on the address bar
-            pyautogui.hotkey('alt', 'd')  
             time.sleep(0.5)
-            # Clear any existing text
-            pyautogui.hotkey('ctrl', 'a')
-            time.sleep(0.3)
-            # Type the output directory
-            pyautogui.write(output_directory)
-            pyautogui.press('enter')
-            time.sleep(1)
-        
-        # Click Save
         pyautogui.press('enter')
-        time.sleep(2)  # Wait for save to complete
-        
-        # Handle any confirmation dialogs (like file already exists)
-        # Uncomment if needed
-        # pyautogui.press('y')  # Press 'y' for Yes to overwrite
-        # time.sleep(1)
-        
+        time.sleep(0.5)
+
+        print("Step 2/2: Printing and saving PDF...")
+        pyautogui.click(x=177, y=249)  # Click Print button
+        time.sleep(4.5)  # Increased delay for print dialog
+
+        if output_directory:
+            time.sleep(0.1)
+            pyautogui.hotkey('alt', 'd')
+            time.sleep(0.1)
+            pyautogui.hotkey('ctrl', 'a')
+            time.sleep(0.1)
+            pyautogui.write(output_directory)
+            time.sleep(0.1)
+            pyautogui.press('enter')
+            time.sleep(0.1)
+
+        pyautogui.click(x=150, y=587)  # Click filename field
+        time.sleep(0.1)
+        pyautogui.hotkey('ctrl', 'a')
+        time.sleep(0.1)
+        pyautogui.press('backspace')
+        time.sleep(0.1)
+        pyautogui.write(str(case_num))
+        time.sleep(0.1)
+
+        pyautogui.click(x=882, y=688)  # Click Save
+        time.sleep(0.3)  # Added delay after clicking Save
+
+        pyautogui.click(x=1000, y=528)  # Click Overwrite confirmation
+        time.sleep(0.3)  # Added delay after clicking Overwrite
+
         print(f"Completed Basic Load Case {case_num}/{num_cases}")
         print(f"Progress: {case_num}/{num_cases} ({case_num/num_cases*100:.1f}%)")
-        time.sleep(1)  # Brief pause to see progress
-    
+
+        if case_num < num_cases:
+            time.sleep(0.3)  # Further reduced optional pause
+
     print("\nAll load cases processed!")
     print(f"PDFs saved to: {output_directory}")
     print("Script execution complete.")
@@ -143,22 +100,21 @@ if __name__ == "__main__":
     print("1. Run calibration mode (to find screen coordinates)")
     print("2. Run automation (export PDFs)")
     print("3. Exit")
-    
+
     while True:
         choice = input("\nEnter your choice (1-3): ")
-        
+
         if choice == '1':
             calibration_mode()
         elif choice == '2':
-            # Configuration
             try:
                 num_cases = int(input("Enter number of load cases to process (default: 20): ") or "20")
                 output_dir = input("Enter output directory (default: C:\\Users\\csheehan\\Documents\\PDFs): ") or r"C:\Users\csheehan\Documents\PDFs"
-                
+
                 print(f"\nReady to process {num_cases} load cases.")
                 print(f"PDFs will be saved to: {output_dir}")
                 confirm = input("Proceed? (y/n): ")
-                
+
                 if confirm.lower() == 'y':
                     print_graphics_for_load_cases(num_cases, output_dir)
                 else:
@@ -170,6 +126,5 @@ if __name__ == "__main__":
             break
         else:
             print("Invalid choice. Please enter 1, 2, or 3.")
-    
-    print("\nNote: If the automation doesn't work correctly, press and hold the cursor")
-    print("in the upper-left corner of the screen to activate the failsafe and stop the script.")
+
+    print("\nNote: If the automation doesn't work correctly, move your mouse to the upper-left corner to stop it.")
